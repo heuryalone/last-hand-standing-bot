@@ -35,8 +35,7 @@ logger = logging.getLogger(__name__)
 # - rarity: "starter" | "common" | "uncommon"
 # - cost: 0, 1, 2, or "X"
 # - target: "self", "other", "any", "multi_other", "multi_any", "none"
-# - description: rules text (not fully implemented yet)
-# NOTE: Only *basic* effects (votes/blocks) are wired into the resolver so far.
+# - description: rules text (engine is a simplified subset)
 
 CARD_CATALOG: Dict[str, Dict] = {
     # ===== STARTER DECK =====
@@ -132,13 +131,6 @@ CARD_CATALOG: Dict[str, Dict] = {
         "cost": 1,
         "target": "none",
         "description": "Reveal all cards you played this round to group; gain +1 card next round.",
-    },
-    "WEAK_BATTERY": {
-        "name": "Weak Battery",
-        "rarity": "common",
-        "cost": 1,
-        "target": "self",
-        "description": "Next round, start with +0.5 Energy (round up every 2 uses).",
     },
     "SEISMIC_TOSS": {
         "name": "Seismic Toss",
@@ -772,8 +764,734 @@ CARD_CATALOG: Dict[str, Dict] = {
         "target": "multi_other",
         "description": "Retain in hand if not played. Cast 2 votes. Cast +3 votes if this was retained from last round.",
     },
-}
 
+    # ===== STARTER UPGRADES =====
+    "BASE_VOTE_UG": {
+        "name": "Base Vote +",
+        "rarity": "starter",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 2 votes.",
+    },
+    "BLOCK_1_UG": {
+        "name": "Block 1 +",
+        "rarity": "starter",
+        "cost": 1,
+        "target": "self",
+        "description": "Block 2 votes against you.",
+    },
+    "ASSIST_ALLY_UG": {
+        "name": "Assist Ally +",
+        "rarity": "starter",
+        "cost": 1,
+        "target": "other",
+        "description": "Give 2 extra votes to another player.",
+    },
+    "BLOCK_ALLY_UG": {
+        "name": "Block Ally",
+        "rarity": "starter",
+        "cost": 1,
+        "target": "other",
+        "description": "Give 2 blocks to another player.",
+    },
+    "PEEK_UG": {
+        "name": "Peek +",
+        "rarity": "starter",
+        "cost": 0,
+        "target": "other",
+        "description": "Secretly look at another player’s hand.",
+    },
+    "SURVIVE_UG": {
+        "name": "Survive +",
+        "rarity": "starter",
+        "cost": 1,
+        "target": "self",
+        "description": "Gain 3 blocks. Discard 1 card.",
+    },
+    "WEAKEN_UG": {
+        "name": "Weaken +",
+        "rarity": "starter",
+        "cost": 0,
+        "target": "other",
+        "description": "Cancel 1 random card from target player.",
+    },
+
+    # ===== COMMON UPGRADES =====
+    "PLUS_ONE_VOTE_UG": {
+        "name": "+1 Vote +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "other",
+        "description": "Cast 1 vote.",
+    },
+    "SHIELD_UG": {
+        "name": "Shield +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "self",
+        "description": "Block 1 vote.",
+    },
+    "QUICK_DRAW_UG": {
+        "name": "Quick Draw +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "none",
+        "description": "Draw 3 cards.",
+    },
+    "ENERGY_SURGE_UG": {
+        "name": "Energy Surge +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "self",
+        "description": "Gain +2 Energy this round.",
+    },
+    "PRESSURE_VOTE_UG": {
+        "name": "Pressure Vote +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "other",
+        "description": "Cast 2 votes that must be revealed publicly.",
+    },
+    "GROUP_TALK_UG": {
+        "name": "Group Talk +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "none",
+        "description": "Reveal all cards you played this round to all players; gain +2 card next round.",
+    },
+    "SEISMIC_TOSS_UG": {
+        "name": "Seismic Toss +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "other",
+        "description": "Cast X votes. X is equal to your block.",
+    },
+    "CHAOS_UG": {
+        "name": "Chaos +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "none",
+        "description": "Draw 1 card and play it for 0E.",
+    },
+    "STEEL_OCEAN_UG": {
+        "name": "Steel Ocean +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 2 votes and gain 2 blocks.",
+    },
+    "POUND_VOTE_UG": {
+        "name": "Pound Vote +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 1 vote and draw 2 cards.",
+    },
+    "BRING_IT_ON_UG": {
+        "name": "Bring It On +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "self",
+        "description": "Gain 3 blocks and draw 1 card.",
+    },
+    "FLIP_UG": {
+        "name": "Flip +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "self",
+        "description": "Gain 1 block and draw 3 cards.",
+    },
+    "BATTLE_CRY_UG": {
+        "name": "Battle Cry +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "none",
+        "description": "Draw 3 cards. Then put a card from your hand on top of your draw pile.",
+    },
+    "BLIND_VOTE_UG": {
+        "name": "Blind Vote +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 4 votes. Add a curse card to your draw pile.",
+    },
+    "BALANCE_UG": {
+        "name": "Balance +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "none",
+        "description": "Draw 4 cards. Discard 1 card.",
+    },
+    "VOTE_THROW_UG": {
+        "name": "Vote Throw +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 3 votes. Draw 1 card. Discard 1 card.",
+    },
+    "VOTE_SPRAY_UG": {
+        "name": "Vote Spray +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "multi_other",
+        "description": "Cast 3 votes against 2 target players.",
+    },
+    "DE_SPRAY_UG": {
+        "name": "De-spray +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "self",
+        "description": "Gain 1 block. +3 block if you cast a vote.",
+    },
+    "ROLL_AND_DODGE_UG": {
+        "name": "Roll and Dodge +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "multi_any",
+        "description": "Gain 3 block. Each block can go to any player.",
+    },
+    "EYE_ATTACK_UG": {
+        "name": "Eye Attack +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 2 votes. Cancel 1 random card from target player.",
+    },
+    "SCRAPS_UG": {
+        "name": "Scraps +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 1 vote. Draw 4 cards. Discard any card with an energy cost that isn’t 0.",
+    },
+    "SLIM_UG": {
+        "name": "Slim +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "none",
+        "description": "Draw 4 cards.",
+    },
+    "TURBO_TIME_UG": {
+        "name": "Turbo Time +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "self",
+        "description": "Gain 3E. Add a curse card to your draw pile.",
+    },
+    "CONCENTRATE_UG": {
+        "name": "Concentrate +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "multi_other",
+        "description": "Cast 2 votes on 2 target players.",
+    },
+    "FATE_UG": {
+        "name": "Fate +",
+        "rarity": "common",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 1 vote. Scry 3. Draw 1 card.",
+    },
+    "FLYING_SAUCER_UG": {
+        "name": "Flying Saucer +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "multi_other",
+        "description": "Retain in hand if not played. Cast 1 vote on 2 target players.",
+    },
+    "PROTECTION_UG": {
+        "name": "Protection +",
+        "rarity": "common",
+        "cost": 2,
+        "target": "any",
+        "description": "Retain in hand if not played. Gain 4 block to any player.",
+    },
+    "NEW_EYE_UG": {
+        "name": "New Eye +",
+        "rarity": "common",
+        "cost": 0,
+        "target": "self",
+        "description": "Gain 1 block. Scry 3.",
+    },
+
+    # ===== UNCOMMON UPGRADES =====
+    "DOUBLE_VOTE_2E_UG": {
+        "name": "Double Vote +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "other",
+        "description": "Cast 3 votes.",
+    },
+    "BLOCK_2z_UG": {
+        "name": "Block 2 +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "self",
+        "description": "Block 2 votes.",
+    },
+    "ENERGY_BATTERY_UG": {
+        "name": "Energy Battery +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "self",
+        "description": "Next round, +1 Energy.",
+    },
+    "CARD_DRAW_2_UG": {
+        "name": "Card Draw 2 +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Draw 2 more cards this round.",
+    },
+    "SHARED_SHIELD_UG": {
+        "name": "Shared Shield+",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "multi_any",
+        "description": "You and 1 ally each block 2 votes.",
+    },
+    "DRAIN_HAND_UG": {
+        "name": "Drain Hand +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "other",
+        "description": "Cancel 1 random card from target.",
+    },
+    "MOMENTUM_UG": {
+        "name": "Momentum +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "self",
+        "description": "Gain +1 Energy if you played ≥2 cards this round.",
+    },
+    "DIG_DEEP_UG": {
+        "name": "Dig Deep +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "self",
+        "description": "Double your block.",
+    },
+    "DOUBLE_VOTE_SPLIT_UG": {
+        "name": "Double Vote (Split) +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "multi_other",
+        "description": "Cast 2 votes on 2 different players.",
+    },
+    "PROACTIVE_UG": {
+        "name": "Proactive +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Draw 2 cards for each curse card in your hand.",
+    },
+    "DRAGON_FIRE_UG": {
+        "name": "Dragon Fire +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 5 votes for each curse card in your hand.",
+    },
+    "ARMORIZE_UG": {
+        "name": "Armorize +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "any",
+        "description": "Target player gains 3 block.",
+    },
+    "POWER_VORTEX_UG": {
+        "name": "Power Vortex +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "self",
+        "description": "Block all votes against you. Add a curse card to your draw pile.",
+    },
+    "ROAR_UG": {
+        "name": "Roar +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "self",
+        "description": "Gain 2 block for each Vote card in your hand.",
+    },
+    "RISKY_BUSINESS_UG": {
+        "name": "Risky Business +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Each vote cast also casts an additional vote. Receive an additional vote for each vote received.",
+    },
+    "FLAME_ON_UG": {
+        "name": "Flame On +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "none",
+        "description": "Each vote cast also casts an additional vote.",
+    },
+    "TORNADO_UG": {
+        "name": "Tornado +",
+        "rarity": "uncommon",
+        "cost": "X",
+        "target": "other",
+        "description": "Cast 1 vote X+1 times.",
+    },
+    "ALL_OUT_VOTE_UG": {
+        "name": "All Out Vote +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "multi_other",
+        "description": "Cast 3 votes. Each vote may have a different target. Discard 1 card.",
+    },
+    "BLURRYFACE_UG": {
+        "name": "Blurryface +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "self",
+        "description": "Gain 3 blocks. +1 block if you discarded a card this turn.",
+    },
+    "BOUNCING_VOTE_UG": {
+        "name": "Bouncing Vote +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "multi_other",
+        "description": "Cast 5 votes. Each vote may have a different target.",
+    },
+    "GAMBLE_UG": {
+        "name": "Gamble +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Discard your hand, then draw that many cards.",
+    },
+    "THINKER_UG": {
+        "name": "Thinker +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "self",
+        "description": "Discard any number of cards. Gain block for each card discarded.",
+    },
+    "CRIPPLING_FEAR_UG": {
+        "name": "Crippling Fear +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "multi_other",
+        "description": "Cast 2 votes on 2 target players. Cancel 1 random card from each target player.",
+    },
+    "NEGOTIATE_UG": {
+        "name": "Negotiate +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "other",
+        "description": "Cancel 2 random cards from target player.",
+    },
+    "SPEED_UG": {
+        "name": "Speed +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "self",
+        "description": "Cast 4 votes and gain 4 blocks.",
+    },
+    "ESCAPE_UG": {
+        "name": "Escape +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "self",
+        "description": "Gain 2 block. Draw 1 card.",
+    },
+    "EXPERT_UG": {
+        "name": "Expert +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "none",
+        "description": "Draw cards until you have 6 in your hand.",
+    },
+    "FINISH_UG": {
+        "name": "Finish +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 2 votes for each vote card played.",
+    },
+    "FLETCHING_UG": {
+        "name": "Fletching +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "self",
+        "description": "Gain 2 block for each non-vote card in your hand.",
+    },
+    "DEXTERITY_UG": {
+        "name": "Dexterity +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "none",
+        "description": "Retain in hand if not played. Each Vote card and block card gains +2.",
+    },
+    "INFINITE_VOTE_UG": {
+        "name": "Infinite Vote +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "other",
+        "description": "Retain in hand if not played. Cast 3 votes.",
+    },
+    "SWEEP_UG": {
+        "name": "Sweep +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "other",
+        "description": "Gain 4 blocks. Cancel 1 random card from target player.",
+    },
+    "NAUSEA_UG": {
+        "name": "Nausea +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "multi_other",
+        "description": "Retain in hand if not played. Cast 2 votes on 2 target players.",
+    },
+    "MANEUVER_UG": {
+        "name": "Maneuver +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Retain in hand if not played. If retained from last turn, gain 3E.",
+    },
+    "PIERCING_WALL_UG": {
+        "name": "Piercing Wall +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "multi_other",
+        "description": "Gain 4 blocks. Cancel 1 random card from 2 target players.",
+    },
+    "CARNIVORE_UG": {
+        "name": "Carnivore +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 3 votes. Draw 2 cards.",
+    },
+    "BACKPACK_UG": {
+        "name": "Backpack +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Draw 2 cards. Discard 2 cards.",
+    },
+    "MIRROR_UG": {
+        "name": "Mirror +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "If this card is discarded by a card’s effect, draw 3 cards.",
+    },
+    "RIDDLER_UG": {
+        "name": "Riddler +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "other",
+        "description": "Cast 6 votes.",
+    },
+    "SLASH_UG": {
+        "name": "Slash +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "other",
+        "description": "Cast 2 votes.",
+    },
+    "SNEAKY_VOTE_UG": {
+        "name": "Sneaky Vote +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "other",
+        "description": "Cast 4 votes. If you discarded a card this turn gain 2E.",
+    },
+    "MAP_UG": {
+        "name": "Map +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "If this card is discarded by a card’s effect, gain 3E.",
+    },
+    "SKEW_UG": {
+        "name": "Skew +",
+        "rarity": "uncommon",
+        "cost": "X",
+        "target": "other",
+        "description": "Cast 2 votes X times.",
+    },
+    "PLAN_AHEAD_UG": {
+        "name": "Plan Ahead +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "none",
+        "description": "Retain in hand if not played. You may retain any cards in your hand.",
+    },
+    "HEATSEEKER_UG": {
+        "name": "Heatseeker +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Retain in hand if not played. If you retain a separate card from last turn, draw 3 cards.",
+    },
+    "HOLLOW_UG": {
+        "name": "Hollow +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "self",
+        "description": "Gain 2 block. Put a card from your discard pile into your hand.",
+    },
+    "JUMP_UG": {
+        "name": "Jump +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "any",
+        "description": "Gain 3 blocks to any player.",
+    },
+    "MACHINE_UG": {
+        "name": "Machine +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Retain in hand if not played. Draw 2 cards.",
+    },
+    "MELT_UG": {
+        "name": "Melt +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "other",
+        "description": "Remove all block from target player then cast 2 vote.",
+    },
+    "OVERLOAD_UG": {
+        "name": "Overload +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Draw 4 cards. Add a curse card to your draw pile.",
+    },
+    "TRASH_UG": {
+        "name": "Trash +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Discard a card. Gain energy equal to its cost. If it costs X, instead double your energy.",
+    },
+    "REINFORCEMENTS_UG": {
+        "name": "Reinforcements +",
+        "rarity": "uncommon",
+        "cost": "X",
+        "target": "multi_any",
+        "description": "Gain 1 block X+1 times.",
+    },
+    "HOOK_LINE_SINKER_UG": {
+        "name": "Hook Line Sinker +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "other",
+        "description": "Retain in hand if not played. Cast 4 votes. Costs 1 energy less for each round retained.",
+    },
+    "SWEEP_LEG_UG": {
+        "name": "Sweep Leg +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "multi_other",
+        "description": "Cast 1 vote on 2 target players. Draw 2 cards.",
+    },
+    "CONCLUSION_UG": {
+        "name": "Conclusion +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "multi_other",
+        "description": "You may not draw cards or gain additional energy this round. Cast 3 votes on 2 target players.",
+    },
+    "INFLUENCER_UG": {
+        "name": "Influencer +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 2 votes or copy another Vote card in your hand.",
+    },
+    "FORESIGHT_UG": {
+        "name": "Foresight +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "none",
+        "description": "Retain in hand if not played. Scry 4.",
+    },
+    "PEACEMAKER_UG": {
+        "name": "Peacemaker +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "none",
+        "description": "Retain in hand if not played. Whenever you scry gain 2 block.",
+    },
+    "CONTINUE_UG": {
+        "name": "Continue +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "self",
+        "description": "Retain in hand if not played. Gain 2 block. +1 block if this was retained from last round.",
+    },
+    "FORWARD_UG": {
+        "name": "Forward +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "self",
+        "description": "Gain 1 block. Gain 2 energy.",
+    },
+    "REACH_UG": {
+        "name": "Reach +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 2 votes. +1 vote for each unspent energy.",
+    },
+    "TIMESTONE_UG": {
+        "name": "Timestone +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "other",
+        "description": "Retain in hand if not played. Cast 5 votes. +1 vote for each card with Retain effect in your hand.",
+    },
+    "TOMBSTONE_UG": {
+        "name": "Tombstone +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "other",
+        "description": "Cast 6 votes. Can only be played if this is the only Vote card in your hand.",
+    },
+    "TURN_AROUND_UG": {
+        "name": "Turn Around +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "any",
+        "description": "Gain 2 block to any player. The next vote card you play costs 0E.",
+    },
+    "HAND_STOP_UG": {
+        "name": "Hand Stop +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "other",
+        "description": "Cast 2 votes. Gain 1 block for each unspent energy you have.",
+    },
+    "WALRUS_UG": {
+        "name": "Walrus +",
+        "rarity": "uncommon",
+        "cost": 1,
+        "target": "other",
+        "description": "Cast 2 votes. Gain block equal to the number of votes cast this round.",
+    },
+    "WEAVER_UG": {
+        "name": "Weaver +",
+        "rarity": "uncommon",
+        "cost": 0,
+        "target": "other",
+        "description": "Cast 2 votes. If you would discard this card while scrying, instead play it and cast +3 votes.",
+    },
+    "WINDMILL_VOTE_UG": {
+        "name": "Windmill Vote +",
+        "rarity": "uncommon",
+        "cost": 2,
+        "target": "multi_other",
+        "description": "Retain in hand if not played. Cast 4 votes. Cast +3 votes if this was retained from last round.",
+    },
+}
 
 # Default starter deck (10 cards)
 STARTER_DECK_DEFAULT = [
@@ -788,6 +1506,18 @@ STARTER_DECK_DEFAULT = [
     "SURVIVE",
     "WEAKEN",
 ]
+
+# Build upgrade map based on *_UG cards
+UPGRADE_MAP: Dict[str, str] = {}
+for cid in CARD_CATALOG.keys():
+    if cid.endswith("_UG"):
+        base = cid[:-3]
+        if base in CARD_CATALOG:
+            UPGRADE_MAP[base] = cid
+
+# Special-case typo'd id if needed
+if "BLOCK_2" in CARD_CATALOG and "BLOCK_2z_UG" in CARD_CATALOG:
+    UPGRADE_MAP["BLOCK_2"] = "BLOCK_2z_UG"
 
 
 # =========================
@@ -807,11 +1537,15 @@ class PlayerState:
     blocks: int = 0
     votes_cast_this_round: int = 0
     votes_received_this_round: int = 0
-    # Buffs for next round etc. (not fully wired yet)
+    # Buffs for next round etc.
     next_round_extra_cards: int = 0
     next_round_energy_bonus: int = 0
     # For retain-related effects
     retained_last_round: Dict[str, bool] = field(default_factory=dict)
+    # Phase flags
+    turn_done: bool = False
+    draft_done: bool = False
+    camp_done: bool = False
 
 
 @dataclass
@@ -828,7 +1562,7 @@ class GameState:
     host_id: int
     round_number: int = 0
     joining_open: bool = True
-    phase: str = "lobby"  # lobby, playing, resolving, finished
+    phase: str = "lobby"  # lobby, playing, drafting, camp, finished
     players: Dict[int, PlayerState] = field(default_factory=dict)
     actions: List[Action] = field(default_factory=list)
     reward_offers: Dict[int, List[str]] = field(default_factory=dict)
@@ -877,9 +1611,12 @@ def card_name(card_id: str) -> str:
     return CARD_CATALOG.get(card_id, {}).get("name", card_id)
 
 
-def card_cost(card_id: str) -> str:
-    c = CARD_CATALOG.get(card_id, {}).get("cost", 1)
-    return c
+def card_cost(card_id: str):
+    return CARD_CATALOG.get(card_id, {}).get("cost", 1)
+
+
+def card_desc(card_id: str) -> str:
+    return CARD_CATALOG.get(card_id, {}).get("description", "")
 
 
 def card_has_retain(card_id: str) -> bool:
@@ -895,14 +1632,6 @@ def draw_one(player: PlayerState):
     if player.deck:
         card = player.deck.pop()
         player.hand.append(card)
-
-
-def draw_up_to(player: PlayerState, target_hand_size: int):
-    while len(player.hand) < target_hand_size:
-        # If both deck and discard empty, stop
-        if not player.deck and not player.discard:
-            break
-        draw_one(player)
 
 
 def format_hand(player: PlayerState) -> str:
@@ -955,6 +1684,30 @@ BLOCK_CARDS_SIMPLE: Dict[str, int] = {
 # Commands: Group
 # =========================
 
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "🎮 *Last Hand Standing – Commands*\n\n"
+        "*Group commands:*\n"
+        "/newgame – Start a new game in this group\n"
+        "/join – Join the current game\n"
+        "/startgame – Initialize decks (host only)\n"
+        "/nextround – Begin the next round (host only)\n"
+        "/resolve – Resolve all played cards and eliminate (host only)\n"
+        "/players – List all players (alive & eliminated)\n"
+        "/status – Show round, phase, and player status\n"
+        "/readycheck – Show who hasn’t finished actions (host only)\n"
+        "/camp – Camp phase: upgrade/remove a card (host only)\n"
+        "/reward – Extra draft of 3 cards (host only; manual)\n"
+        "/endgame – End the current game early (host only)\n\n"
+        "*DM commands:*\n"
+        "/start – Info & help (in DM)\n"
+        "/deck – View your deck\n"
+        "/remove N – Remove the Nth card from your deck\n"
+        "/upgrade N – Upgrade the Nth card in your deck\n"
+    )
+    await update.effective_message.reply_text(text, parse_mode="Markdown")
+
+
 async def newgame(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
@@ -966,7 +1719,7 @@ async def newgame(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(
         f"🎮 New Last Hand Standing game created by {user.mention_html()}!\n"
         "Players can now /join.\n"
-        "When ready, host can /startgame.",
+        "When ready, host can /startgame and then /nextround.",
         parse_mode="HTML",
     )
 
@@ -1013,6 +1766,9 @@ async def startgame(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Ga
         p.energy_max = 3
         p.energy = 3
         p.blocks = 0
+        p.turn_done = False
+        p.draft_done = False
+        p.camp_done = False
 
     await update.effective_message.reply_text(
         "🃏 Game started! All players have the starter 10-card deck.\n"
@@ -1021,8 +1777,41 @@ async def startgame(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Ga
 
 
 @require_game
+async def players_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameState):
+    alive = [p.username for p in game.players.values() if p.alive]
+    dead = [p.username for p in game.players.values() if not p.alive]
+
+    if not game.players:
+        await update.effective_message.reply_text("No players have joined yet.")
+        return
+
+    lines = ["👥 Players in this game", ""]
+    lines.append("Alive:")
+    if alive:
+        lines.extend(f" - {name}" for name in alive)
+    else:
+        lines.append(" - (none)")
+
+    lines.append("")
+    lines.append("Eliminated:")
+    if dead:
+        lines.extend(f" - {name}" for name in dead)
+    else:
+        lines.append(" - (none)")
+
+    await update.effective_message.reply_text("\n".join(lines))
+
+
+@require_game
 async def nextround(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameState):
-    """Start a new round: discard old non-retain cards, reset energy/blocks, draw 3 cards, DM hands."""
+    """
+    Start a new round:
+    - Discard old non-retain cards
+    - Keep retain cards in hand
+    - Reset energy/blocks
+    - Draw 5 + bonus new cards (no hand size cap)
+    - DM hands
+    """
     user = update.effective_user
     if user.id != game.host_id:
         await update.effective_message.reply_text("Only the host can start a new round.")
@@ -1038,7 +1827,7 @@ async def nextround(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Ga
     game.actions = []
 
     await update.effective_message.reply_text(
-        f"🔄 Starting Round {game.round_number}! Dealing 3 cards and resetting energy..."
+        f"🔄 Starting Round {game.round_number}! Discarding non-retain cards and dealing 5 new cards..."
     )
 
     for p in alive:
@@ -1057,7 +1846,7 @@ async def nextround(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Ga
                 p.discard.append(cid)
         p.hand = new_hand
 
-        # Store which cards were retained (for "retained from last round" type effects)
+        # Store which cards were retained (for "retained from last round" effects)
         p.retained_last_round = new_retained
 
         # Reset per-round stats
@@ -1065,15 +1854,21 @@ async def nextround(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Ga
         p.votes_cast_this_round = 0
         p.votes_received_this_round = 0
 
-        # Reset energy with bonus if any (Energy Battery etc. not yet wired)
+        # Reset phase flags
+        p.turn_done = False
+        p.draft_done = False
+        p.camp_done = False
+
+        # Reset energy with bonus if any
         p.energy_max = 3 + p.next_round_energy_bonus
         p.energy = p.energy_max
         p.next_round_energy_bonus = 0
 
-        # Draw up to 3 + next_round_extra_cards
-        target_size = 3 + p.next_round_extra_cards
+        # Draw 5 + extra NEW cards (no cap including retained)
+        draw_count = 5 + p.next_round_extra_cards
         p.next_round_extra_cards = 0
-        draw_up_to(p, target_size)
+        for _ in range(draw_count):
+            draw_one(p)
 
         # DM their hand
         try:
@@ -1082,20 +1877,33 @@ async def nextround(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Ga
             logger.error(f"Failed to DM player {p.user_id}: {e}")
 
     await update.effective_message.reply_text(
-        "Hands sent via DM. Players may now play cards until they are done."
+        "Hands sent via DM. Players may now play cards until they are done. Host can /resolve at any time."
     )
 
 
 @require_game
 async def resolve(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameState):
-    """Simple resolver: only basic vote/block effects are implemented so far."""
+    """
+    Simple resolver: only basic vote/block effects are implemented so far.
+    After resolving:
+      - Eliminates player(s)
+      - If game continues, automatically triggers drafting (like /reward)
+    """
     user = update.effective_user
     if user.id != game.host_id:
         await update.effective_message.reply_text("Only the host can resolve the round.")
         return
 
+    alive_before = list_alive_players(game)
+    if len(alive_before) < 2:
+        await update.effective_message.reply_text("Not enough players alive to resolve.")
+        return
+
+    # Even if some players didn't hit 'Done', we just treat them as no actions.
     if not game.actions:
-        await update.effective_message.reply_text("No actions were played this round.")
+        await update.effective_message.reply_text(
+            "No actions were played this round. No elimination will occur."
+        )
         return
 
     # Tally plain votes and blocks, based on simplified mapping.
@@ -1110,16 +1918,13 @@ async def resolve(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Game
         if cid in VOTE_CARDS_SIMPLE and tgt is not None:
             count = VOTE_CARDS_SIMPLE[cid]
             votes_on[tgt] = votes_on.get(tgt, 0) + count
-            # track for Walrus etc. later
             game.players[src].votes_cast_this_round += count
             game.players[tgt].votes_received_this_round += count
 
         if cid in BLOCK_CARDS_SIMPLE:
-            # Block always on self for these
             blocks_on[src] = blocks_on.get(src, 0) + BLOCK_CARDS_SIMPLE[cid]
 
         if cid == "ASSIST_ALLY" and tgt is not None:
-            # Give 1 extra vote to another player (counts as a vote)
             votes_on[tgt] = votes_on.get(tgt, 0) + 1
 
         if cid == "BLOCK_ALLY" and tgt is not None:
@@ -1132,11 +1937,13 @@ async def resolve(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Game
         final_votes[pid] = max(0, v - b)
 
     if not final_votes:
-        await update.effective_message.reply_text("After applying blocks, nobody has any votes.")
+        await update.effective_message.reply_text(
+            "After applying blocks, nobody has any votes. No one is eliminated."
+        )
         return
 
     # Show results
-    lines = ["📊 Round results (basic engine):"]
+    lines = ["📊 Round results:"]
     for p in list_alive_players(game):
         v = final_votes.get(p.user_id, 0)
         lines.append(f" - {p.username}: {v} vote(s)")
@@ -1148,33 +1955,36 @@ async def resolve(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Game
 
     if not elim_players:
         await update.effective_message.reply_text("No one is eliminated this round.")
-        return
-
-    for p in elim_players:
-        p.alive = False
-
-    if len(elim_players) == 1:
-        await update.effective_message.reply_text(f"❌ {elim_players[0].username} has been eliminated!")
     else:
-        names = ", ".join(p.username for p in elim_players)
-        await update.effective_message.reply_text(
-            f"❌ Multiple players tied with {max_votes} votes and are eliminated: {names}"
-        )
+        for p in elim_players:
+            p.alive = False
 
-    alive = list_alive_players(game)
-    if len(alive) == 1:
+        if len(elim_players) == 1:
+            await update.effective_message.reply_text(f"❌ {elim_players[0].username} has been eliminated!")
+        else:
+            names = ", ".join(p.username for p in elim_players)
+            await update.effective_message.reply_text(
+                f"❌ Multiple players tied with {max_votes} votes and are eliminated: {names}"
+            )
+
+    alive_after = list_alive_players(game)
+    if len(alive_after) == 1:
         await update.effective_message.reply_text(
-            f"🏆 {alive[0].username} is the LAST HAND STANDING! Game over."
+            f"🏆 {alive_after[0].username} is the LAST HAND STANDING! Game over."
         )
         game.phase = "finished"
-    elif len(alive) == 0:
+        return
+    elif len(alive_after) == 0:
         await update.effective_message.reply_text("Everyone has been eliminated. Chaos victory.")
         game.phase = "finished"
-    else:
-        game.phase = "lobby"
-        await update.effective_message.reply_text(
-            "Round complete. Host can /nextround to start the next round."
-        )
+        return
+
+    # Game continues: start draft phase (3-card offers)
+    await update.effective_message.reply_text(
+        "📦 Round complete. Starting draft: each alive player will receive 3 random cards in DM to choose 1 or Skip."
+    )
+    await reward(update, context, game)  # reuse reward logic as draft
+    # reward() will set phase="drafting"
 
 
 @require_game
@@ -1201,10 +2011,14 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameS
 
 @require_game
 async def reward(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameState):
-    """Host command: send each alive player 3 random Common/Uncommon cards to add or skip."""
+    """
+    Host command (and internal helper from /resolve):
+    send each alive player 3 random Common/Uncommon cards to add or skip.
+    Also used as the post-/resolve draft step.
+    """
     user = update.effective_user
     if user.id != game.host_id:
-        await update.effective_message.reply_text("Only the host can grant rewards.")
+        await update.effective_message.reply_text("Only the host can grant rewards / start drafts.")
         return
 
     pool = list_common_uncommon_ids()
@@ -1218,17 +2032,19 @@ async def reward(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameS
         return
 
     game.reward_offers.clear()
+    game.phase = "drafting"
 
     for p in alive:
         # sample 3 distinct cards (or with replacement if fewer in pool)
         offers = random.sample(pool, k=min(3, len(pool)))
         game.reward_offers[p.user_id] = offers
+        p.draft_done = False
 
         buttons = []
         for cid in offers:
             buttons.append([
                 InlineKeyboardButton(
-                    text=card_name(cid),
+                    text=f"Take {card_name(cid)}",
                     callback_data=f"reward_pick|{game.chat_id}|{p.user_id}|{cid}"
                 )
             ])
@@ -1243,8 +2059,8 @@ async def reward(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameS
             await context.bot.send_message(
                 chat_id=p.user_id,
                 text=(
-                    "🎁 Reward! Choose one card to add to your deck or skip:\n\n" +
-                    "\n".join(f"- {card_name(cid)}" for cid in offers)
+                    "📦 Draft / Reward! Choose one card to add to your deck or skip:\n\n" +
+                    "\n".join(f"- {card_name(cid)} – {card_desc(cid)}" for cid in offers)
                 ),
                 reply_markup=InlineKeyboardMarkup(buttons),
             )
@@ -1252,8 +2068,110 @@ async def reward(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameS
             logger.error(f"Failed to send reward DM to {p.user_id}: {e}")
 
     await update.effective_message.reply_text(
-        "Reward choices sent to all alive players via DM."
+        "Draft choices sent to all alive players via DM."
     )
+
+
+@require_game
+async def readycheck(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameState):
+    user = update.effective_user
+    if user.id != game.host_id:
+        await update.effective_message.reply_text("Only the host can use /readycheck.")
+        return
+
+    phase = game.phase
+    alive = list_alive_players(game)
+
+    if phase == "playing":
+        not_done = [p.username for p in alive if not p.turn_done]
+        label = "turns (card plays)"
+    elif phase == "drafting":
+        not_done = [p.username for p in alive if not p.draft_done]
+        label = "draft choices"
+    elif phase == "camp":
+        not_done = [p.username for p in alive if not p.camp_done]
+        label = "camp choices"
+    else:
+        await update.effective_message.reply_text("No pending actions in the current phase.")
+        return
+
+    if not not_done:
+        await update.effective_message.reply_text(f"✅ All players have finished their {label}.")
+    else:
+        lines = [f"⏳ Still pending {label} from:"]
+        for name in not_done:
+            lines.append(f" - {name}")
+        await update.effective_message.reply_text("\n".join(lines))
+
+
+@require_game
+async def camp(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameState):
+    """Host triggers camp phase: each alive player can upgrade or remove a card."""
+    user = update.effective_user
+    if user.id != game.host_id:
+        await update.effective_message.reply_text("Only the host can start the camp phase.")
+        return
+
+    alive = list_alive_players(game)
+    if not alive:
+        await update.effective_message.reply_text("No alive players to send to camp.")
+        return
+
+    game.phase = "camp"
+    await update.effective_message.reply_text(
+        "🏕 Camp phase! Each alive player will be asked to upgrade or remove a card in DM."
+    )
+
+    for p in alive:
+        p.camp_done = False
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text="⬆️ Upgrade a card", callback_data=f"camp_upgrade|{game.chat_id}|{p.user_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🗑 Remove a card", callback_data=f"camp_remove|{game.chat_id}|{p.user_id}"
+                )
+            ],
+        ]
+        try:
+            await context.bot.send_message(
+                chat_id=p.user_id,
+                text=(
+                    "🏕 You arrived at camp!\n\n"
+                    "Choose whether to *upgrade* a card or *remove* a card from your deck."
+                ),
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode="Markdown",
+            )
+        except Exception as e:
+            logger.error(f"Failed to DM camp to {p.user_id}: {e}")
+
+
+@require_game
+async def endgame(update: Update, context: ContextTypes.DEFAULT_TYPE, game: GameState):
+    user = update.effective_user
+    if user.id != game.host_id:
+        await update.effective_message.reply_text("Only the host can end the game early.")
+        return
+
+    await update.effective_message.reply_text("🛑 The host has ended the game early.")
+
+    # DM all players
+    for p in game.players.values():
+        try:
+            await context.bot.send_message(
+                chat_id=p.user_id,
+                text="🛑 The current Last Hand Standing game has been ended by the host.",
+            )
+        except Exception:
+            pass
+
+    game.phase = "finished"
+    if game.chat_id in GAMES:
+        del GAMES[game.chat_id]
 
 
 # =========================
@@ -1267,8 +2185,8 @@ async def start_private(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Useful DM commands:\n"
         " /deck – view your deck\n"
         " /remove N – remove the Nth card from your deck\n"
-        " /upgrade N – upgrade the Nth card in your deck (placeholder, marks it as upgraded)\n\n"
-        "Ask your host to /newgame in a group and then /join."
+        " /upgrade N – upgrade the Nth card in your deck (if an upgraded version exists)\n\n"
+        "In a group: use /help to see all commands."
     )
 
 
@@ -1329,7 +2247,7 @@ async def remove_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def upgrade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Placeholder: upgrade just renames the card ID with _UPG, so you can later define improved cards."""
+    """Upgrade using the explicit *_UG cards."""
     user = update.effective_user
     game = get_game_for_player(user.id)
     if not game:
@@ -1356,18 +2274,12 @@ async def upgrade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     old_id = p.deck[idx]
-    new_id = f"{old_id}_UPG"
-
-    # If upgraded version isn't defined yet, create a placeholder in catalog.
-    if new_id not in CARD_CATALOG:
-        base = CARD_CATALOG.get(old_id, {})
-        CARD_CATALOG[new_id] = {
-            "name": base.get("name", old_id) + " +",
-            "rarity": base.get("rarity", "uncommon"),
-            "cost": base.get("cost", 1),
-            "target": base.get("target", "other"),
-            "description": base.get("description", "") + " (Upgraded version – define later.)",
-        }
+    new_id = UPGRADE_MAP.get(old_id)
+    if not new_id:
+        await update.effective_message.reply_text(
+            f"{card_name(old_id)} does not have an upgraded version yet."
+        )
+        return
 
     p.deck[idx] = new_id
     await update.effective_message.reply_text(
@@ -1380,9 +2292,9 @@ async def upgrade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def send_hand_menu(context: ContextTypes.DEFAULT_TYPE, game: GameState, p: PlayerState):
-    """Send or refresh the 'play cards' menu for a player."""
-    # Build playable card buttons: cost <= energy (or X-cost if energy>0)
+    """Send the 'play cards' menu for a player with Play + Info buttons."""
     buttons = []
+
     for idx, cid in enumerate(p.hand):
         cost = card_cost(cid)
         playable = False
@@ -1395,14 +2307,22 @@ async def send_hand_menu(context: ContextTypes.DEFAULT_TYPE, game: GameState, p:
             except Exception:
                 playable = False
 
-        text = f"{idx+1}. {card_name(cid)} (cost {cost})"
+        label = f"{idx+1}. {card_name(cid)} (cost {cost})"
+        row = []
         if playable:
-            buttons.append([
+            row.append(
                 InlineKeyboardButton(
-                    text=text,
-                    callback_data=f"playcard|{game.chat_id}|{p.user_id}|{idx}"
+                    text=f"▶ {label}",
+                    callback_data=f"playcard|{game.chat_id}|{p.user_id}|{idx}",
                 )
-            ])
+            )
+        row.append(
+            InlineKeyboardButton(
+                text="ℹ️ Info",
+                callback_data=f"info|{game.chat_id}|{p.user_id}|{idx}",
+            )
+        )
+        buttons.append(row)
 
     # Add Done button
     buttons.append([
@@ -1412,7 +2332,7 @@ async def send_hand_menu(context: ContextTypes.DEFAULT_TYPE, game: GameState, p:
         )
     ])
 
-    text = f"Round {game.round_number}\n{format_hand(p)}\n\nTap cards to play them, then tap Done."
+    text = f"Round {game.round_number}\n{format_hand(p)}\n\nTap ▶ to play cards, ℹ️ for details, then tap Done."
 
     await context.bot.send_message(
         chat_id=p.user_id,
@@ -1435,14 +2355,22 @@ async def refresh_hand_message(query, context: ContextTypes.DEFAULT_TYPE, game: 
             except Exception:
                 playable = False
 
-        text = f"{idx+1}. {card_name(cid)} (cost {cost})"
+        label = f"{idx+1}. {card_name(cid)} (cost {cost})"
+        row = []
         if playable:
-            buttons.append([
+            row.append(
                 InlineKeyboardButton(
-                    text=text,
+                    text=f"▶ {label}",
                     callback_data=f"playcard|{game.chat_id}|{p.user_id}|{idx}"
                 )
-            ])
+            )
+        row.append(
+            InlineKeyboardButton(
+                text="ℹ️ Info",
+                callback_data=f"info|{game.chat_id}|{p.user_id}|{idx}",
+            )
+        )
+        buttons.append(row)
 
     buttons.append([
         InlineKeyboardButton(
@@ -1451,7 +2379,7 @@ async def refresh_hand_message(query, context: ContextTypes.DEFAULT_TYPE, game: 
         )
     ])
 
-    text = f"Round {game.round_number}\n{format_hand(p)}\n\nTap cards to play them, then tap Done."
+    text = f"Round {game.round_number}\n{format_hand(p)}\n\nTap ▶ to play cards, ℹ️ for details, then tap Done."
     await query.edit_message_text(
         text=text,
         reply_markup=InlineKeyboardMarkup(buttons),
@@ -1520,19 +2448,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Determine target type
         target_mode = CARD_CATALOG.get(cid, {}).get("target", "other")
         if target_mode in ("self", "none"):
-            # Immediately resolve: self or no-target
+            # Immediately record action: self or no-target
             target_id = player_id if target_mode == "self" else None
             act = Action(source_id=player_id, card_id=cid, target_id=target_id, x_value=x_value)
             game.actions.append(act)
             p.discard.append(cid)
             del p.hand[card_index]
 
-            # For now, we do not apply immediate draw/energy/other effects.
-            # That will be implemented later as we wire each card.
             await refresh_hand_message(query, context, game, p)
             return
 
-        # Need to pick a target (or multiple). For now, we support single target.
+        # Need to pick a target (current engine supports single target only)
         alive = [pl for pl in game.players.values() if pl.alive and pl.user_id != player_id]
         if not alive:
             # no valid target; just discard the card
@@ -1553,7 +2479,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
 
         await query.edit_message_text(
-            f"You selected {card_name(cid)} (cost spent {energy_spent}).\nChoose a target:",
+            f"You selected {card_name(cid)} (spent {energy_spent} energy).\nChoose a target:",
             reply_markup=InlineKeyboardMarkup(buttons),
         )
 
@@ -1602,11 +2528,90 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not p:
             await query.edit_message_text("Player not found.")
             return
+        p.turn_done = True
         await query.edit_message_text(
             f"You are done playing this round.\n{format_hand(p)}"
         )
 
-    # ----- Reward selection -----
+    elif kind == "info":
+        # info|chat_id|player_id|card_index
+        if len(data) != 4:
+            return
+        chat_id = int(data[1])
+        player_id = int(data[2])
+        idx = int(data[3])
+
+        game = get_game(chat_id)
+        if not game:
+            await query.edit_message_text("Game no longer exists.")
+            return
+        p = game.players.get(player_id)
+        if not p:
+            await query.edit_message_text("Player not found.")
+            return
+        if idx < 0 or idx >= len(p.hand):
+            await query.edit_message_text("Card not found.")
+            return
+
+        cid = p.hand[idx]
+        name = card_name(cid)
+        cost = card_cost(cid)
+        desc = card_desc(cid)
+
+        playable = False
+        if cost == "X":
+            playable = p.energy > 0
+        else:
+            try:
+                c_int = int(cost)
+                playable = p.energy >= c_int
+            except Exception:
+                playable = False
+
+        text = (
+            f"📜 *{name}*\n"
+            f"Cost: `{cost}`\n\n"
+            f"{desc}\n\n"
+            "Tap ▶ to play it (if you have enough energy), or go back to your hand."
+        )
+
+        buttons = []
+        if playable:
+            buttons.append([
+                InlineKeyboardButton(
+                    text="▶ Play this card",
+                    callback_data=f"playcard|{game.chat_id}|{p.user_id}|{idx}",
+                )
+            ])
+        buttons.append([
+            InlineKeyboardButton(
+                text="⬅️ Back to hand",
+                callback_data=f"backtohand|{game.chat_id}|{p.user_id}",
+            )
+        ])
+
+        await query.edit_message_text(
+            text=text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode="Markdown",
+        )
+
+    elif kind == "backtohand":
+        if len(data) != 3:
+            return
+        chat_id = int(data[1])
+        player_id = int(data[2])
+        game = get_game(chat_id)
+        if not game:
+            await query.edit_message_text("Game no longer exists.")
+            return
+        p = game.players.get(player_id)
+        if not p:
+            await query.edit_message_text("Player not found.")
+            return
+        await refresh_hand_message(query, context, game, p)
+
+    # ----- Reward / draft selection -----
     elif kind == "reward_pick":
         if len(data) != 4:
             return
@@ -1631,9 +2636,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         p.deck.append(cid)
         game.reward_offers[player_id] = []
+        p.draft_done = True
 
         await query.edit_message_text(
-            f"You added {card_name(cid)} to your deck."
+            f"✅ You added {card_name(cid)} to your deck."
         )
 
     elif kind == "reward_skip":
@@ -1648,7 +2654,165 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         game.reward_offers[player_id] = []
-        await query.edit_message_text("You skipped adding a card to your deck.")
+        p = game.players.get(player_id)
+        if p:
+            p.draft_done = True
+        await query.edit_message_text("✅ You skipped adding a card to your deck.")
+
+    # ----- Camp (upgrade/remove) -----
+    elif kind == "camp_upgrade":
+        # camp_upgrade|chat_id|player_id
+        if len(data) != 3:
+            return
+        chat_id = int(data[1])
+        player_id = int(data[2])
+
+        game = get_game(chat_id)
+        if not game:
+            await query.edit_message_text("Game no longer exists.")
+            return
+        p = game.players.get(player_id)
+        if not p or not p.alive:
+            await query.edit_message_text("You are no longer in this game.")
+            return
+
+        # Only show cards that have an upgraded version
+        all_cards = list(set(p.deck + p.discard))
+        upgradable = [cid for cid in all_cards if cid in UPGRADE_MAP]
+
+        if not upgradable:
+            p.camp_done = True
+            await query.edit_message_text("You have no cards that can be upgraded. Camp action complete.")
+            return
+
+        buttons = []
+        for cid in sorted(upgradable):
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"Upgrade {card_name(cid)}",
+                    callback_data=f"camp_pick_upgrade|{game.chat_id}|{p.user_id}|{cid}",
+                )
+            ])
+
+        await query.edit_message_text(
+            "⬆️ Choose a card to upgrade:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+
+    elif kind == "camp_remove":
+        # camp_remove|chat_id|player_id
+        if len(data) != 3:
+            return
+        chat_id = int(data[1])
+        player_id = int(data[2])
+
+        game = get_game(chat_id)
+        if not game:
+            await query.edit_message_text("Game no longer exists.")
+            return
+        p = game.players.get(player_id)
+        if not p or not p.alive:
+            await query.edit_message_text("You are no longer in this game.")
+            return
+
+        all_cards = list(set(p.deck + p.discard))
+        if not all_cards:
+            p.camp_done = True
+            await query.edit_message_text("You have no cards to remove. Camp action complete.")
+            return
+
+        buttons = []
+        for cid in sorted(all_cards):
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"Remove {card_name(cid)}",
+                    callback_data=f"camp_pick_remove|{game.chat_id}|{p.user_id}|{cid}",
+                )
+            ])
+
+        await query.edit_message_text(
+            "🗑 Choose a card to remove from your deck:",
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+
+    elif kind == "camp_pick_upgrade":
+        # camp_pick_upgrade|chat_id|player_id|card_id
+        if len(data) != 4:
+            return
+        chat_id = int(data[1])
+        player_id = int(data[2])
+        cid = data[3]
+
+        game = get_game(chat_id)
+        if not game:
+            await query.edit_message_text("Game no longer exists.")
+            return
+        p = game.players.get(player_id)
+        if not p or not p.alive:
+            await query.edit_message_text("You are no longer in this game.")
+            return
+
+        new_id = UPGRADE_MAP.get(cid)
+        if not new_id:
+            await query.answer("This card cannot be upgraded.", show_alert=True)
+            return
+
+        upgraded = False
+        # Prefer upgrading from deck; if not found, upgrade from discard
+        if cid in p.deck:
+            idx = p.deck.index(cid)
+            p.deck[idx] = new_id
+            upgraded = True
+        elif cid in p.discard:
+            idx = p.discard.index(cid)
+            p.discard[idx] = new_id
+            upgraded = True
+
+        if not upgraded:
+            await query.answer("Card not found in your deck/discard.", show_alert=True)
+            return
+
+        p.camp_done = True
+        await query.edit_message_text(
+            f"✅ Upgraded {card_name(cid)} to {card_name(new_id)}."
+        )
+
+    elif kind == "camp_pick_remove":
+        # camp_pick_remove|chat_id|player_id|card_id
+        if len(data) != 4:
+            return
+        chat_id = int(data[1])
+        player_id = int(data[2])
+        cid = data[3]
+
+        game = get_game(chat_id)
+        if not game:
+            await query.edit_message_text("Game no longer exists.")
+            return
+        p = game.players.get(player_id)
+        if not p or not p.alive:
+            await query.edit_message_text("You are no longer in this game.")
+            return
+
+        # remove first occurrence in deck, then discard if needed
+        removed = False
+        if cid in p.deck:
+            p.deck.remove(cid)
+            removed = True
+        elif cid in p.discard:
+            p.discard.remove(cid)
+            removed = True
+
+        if not removed:
+            await query.answer("Card not found in your deck/discard.", show_alert=True)
+            return
+
+        p.camp_done = True
+        await query.edit_message_text(f"✅ Removed {card_name(cid)} from your deck.")
+
+    else:
+        # Unknown callback type
+        return
 
 
 # =========================
@@ -1660,6 +2824,7 @@ def main():
     app = ApplicationBuilder().token(token).build()
 
     # Group commands
+    app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("newgame", newgame))
     app.add_handler(CommandHandler("join", join))
     app.add_handler(CommandHandler("startgame", startgame))
@@ -1667,6 +2832,10 @@ def main():
     app.add_handler(CommandHandler("resolve", resolve))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("reward", reward))
+    app.add_handler(CommandHandler("players", players_cmd))
+    app.add_handler(CommandHandler("readycheck", readycheck))
+    app.add_handler(CommandHandler("camp", camp))
+    app.add_handler(CommandHandler("endgame", endgame))
 
     # Private commands
     app.add_handler(CommandHandler("start", start_private))
@@ -1683,4 +2852,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
