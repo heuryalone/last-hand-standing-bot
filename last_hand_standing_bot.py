@@ -2816,12 +2816,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================
+# Webhook configuration
+# =========================
+
+TOKEN = os.environ["BOT_TOKEN"]          # Set in Render environment
+APP_URL = os.environ["APP_URL"]          # e.g. https://last-hand-standing-bot-cui9.onrender.com
+PORT = int(os.environ.get("PORT", 8443)) # Render injects PORT
+WEBHOOK_PATH = "popodoppobbaoxe"         # your custom webhook path
+
+
+# =========================
 # Main
 # =========================
 
 def main():
-    token = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-    app = ApplicationBuilder().token(token).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
     # Group commands
     app.add_handler(CommandHandler("help", help_cmd))
@@ -2846,8 +2855,14 @@ def main():
     # Callback
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    logger.info("Bot starting...")
-    app.run_polling()
+    logger.info("Bot starting in webhook mode...")
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=WEBHOOK_PATH,
+        webhook_url=f"{APP_URL}/{WEBHOOK_PATH}",
+    )
 
 
 if __name__ == "__main__":
