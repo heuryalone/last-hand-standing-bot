@@ -2,7 +2,7 @@ import logging
 import os
 import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from telegram import (
     Update,
@@ -32,12 +32,21 @@ logger = logging.getLogger(__name__)
 # =========================
 # Fields per card:
 # - name: shown to players
-# - rarity: "starter" | "common" | "uncommon"
-# - cost: 0, 1, 2, or "X"
+# - rarity: "starter" | "common" | "uncommon" | "curse"
+# - cost: 0, 1, 2, "X", or None for unplayable
 # - target: "self", "other", "any", "multi_other", "multi_any", "none"
 # - description: rules text (engine is a simplified subset)
 
 CARD_CATALOG: Dict[str, Dict] = {
+    # ===== CURSE (generic, used by many effects) =====
+    "CURSE": {
+        "name": "Curse",
+        "rarity": "curse",
+        "cost": None,
+        "target": "none",
+        "description": "Unplayable. Does nothing except take up space in your hand.",
+    },
+
     # ===== STARTER DECK =====
     "BASE_VOTE": {
         "name": "Base Vote",
@@ -58,7 +67,7 @@ CARD_CATALOG: Dict[str, Dict] = {
         "rarity": "starter",
         "cost": 1,
         "target": "other",
-        "description": "Give 1 extra vote to another player.",
+        "description": "Give 1 extra vote to another player. They secretly choose who receives that vote.",
     },
     "BLOCK_ALLY": {
         "name": "Block Ally",
@@ -785,10 +794,10 @@ CARD_CATALOG: Dict[str, Dict] = {
         "rarity": "starter",
         "cost": 1,
         "target": "other",
-        "description": "Give 2 extra votes to another player.",
+        "description": "Give 2 extra votes to another player. They secretly choose who the votes go to.",
     },
     "BLOCK_ALLY_UG": {
-        "name": "Block Ally",
+        "name": "Block Ally +",
         "rarity": "starter",
         "cost": 1,
         "target": "other",
@@ -1044,7 +1053,7 @@ CARD_CATALOG: Dict[str, Dict] = {
         "description": "Draw 2 more cards this round.",
     },
     "SHARED_SHIELD_UG": {
-        "name": "Shared Shield+",
+        "name": "Shared Shield +",
         "rarity": "uncommon",
         "cost": 1,
         "target": "multi_any",
@@ -1546,6 +1555,9 @@ class PlayerState:
     turn_done: bool = False
     draft_done: bool = False
     camp_done: bool = False
+    # Tracking for more advanced effects
+    cards_played_this_round: List[str] = field(default_factory=list)
+    cards_discarded_this_round: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -1624,14 +1636,45 @@ def card_has_retain(card_id: str) -> bool:
     return "retain in hand if not played" in desc
 
 
+def is_vote_card(card_id: str) -> bool:
+    """Very simple heuristic: card whose description starts with/contains 'Cast' and 'vote'."""
+    desc = card_desc(card_id).lower()
+    return "cast" in desc and "vote" in desc
+
+
 def draw_one(player: PlayerState):
     """Draw a single card; reshuffle discard if deck is empty."""
     if not player.deck and player.discard:
-        player.deck, player.discard = player.discard, []
-        random.shuffle(player.deck)
+        tmp = list(player.discard)
+        player.discard.clear()
+        random.shuffle(tmp)
+        player.deck.extend(tmp)
     if player.deck:
         card = player.deck.pop()
         player.hand.append(card)
+        return card
+    return None
+
+
+def draw_cards(player: PlayerState, n: int):
+    drawn = []
+    for _ in range(max(0, n)):
+        c = draw_one(player)
+        if c is None:
+            break
+        drawn.append(c)
+    return drawn
+
+
+def discard_random(player: PlayerState, count: int = 1):
+    """Discard random cards from hand."""
+    for _ in range(max(0, count)):
+        if not player.hand:
+            return
+        idx = random.randrange(len(player.hand))
+        cid = player.hand.pop(idx)
+        player.discard.append(cid)
+        player.cards_discarded_this_round.append(cid)
 
 
 def format_hand(player: PlayerState) -> str:
@@ -1640,7 +1683,9 @@ def format_hand(player: PlayerState) -> str:
         lines.append(" - (empty)")
     else:
         for idx, cid in enumerate(player.hand):
-            lines.append(f"{idx+1}. {card_name(cid)} (cost {card_cost(cid)})")
+            cost = card_cost(cid)
+            cost_str = "X" if cost == "X" else ("-" if cost is None else str(cost))
+            lines.append(f"{idx+1}. {card_name(cid)} (cost {cost_str})")
     return "\n".join(lines)
 
 
@@ -1656,27 +1701,91 @@ def list_common_uncommon_ids() -> List[str]:
     return ids
 
 
-# A small, simple mapping of which cards produce votes / blocks for now.
+# =========================
+# Simple vote/block maps used in /resolve
+# (These are the cards that actually change vote/block totals.)
+# =========================
+
 VOTE_CARDS_SIMPLE: Dict[str, int] = {
+    # Starters
     "BASE_VOTE": 1,
+    "BASE_VOTE_UG": 2,
+    # Commons
     "PLUS_ONE_VOTE": 1,
+    "PLUS_ONE_VOTE_UG": 1,
     "POUND_VOTE": 1,
+    "POUND_VOTE_UG": 1,
     "PRESSURE_VOTE": 1,
+    "PRESSURE_VOTE_UG": 2,
     "DOUBLE_VOTE_2E": 2,
+    "DOUBLE_VOTE_2E_UG": 3,
     "DOUBLE_VOTE_SPLIT": 2,
+    "DOUBLE_VOTE_SPLIT_UG": 4,
     "BLIND_VOTE": 3,
+    "BLIND_VOTE_UG": 4,
     "VOTE_THROW": 2,
+    "VOTE_THROW_UG": 3,
     "VOTE_SPRAY": 2,
+    "VOTE_SPRAY_UG": 3,
     "CONCENTRATE": 2,
+    "CONCENTRATE_UG": 4,
     "RIDDLER": 4,
+    "RIDDLER_UG": 6,
     "SLASH": 1,
+    "SLASH_UG": 2,
+    "INFINITE_VOTE": 2,
+    "INFINITE_VOTE_UG": 3,
+    "CARNIVORE": 3,
+    "CARNIVORE_UG": 3,
+    "SWEEP_LEG": 2,
+    "SWEEP_LEG_UG": 2,
+    "CONCLUSION": 4,      # 2 votes on 2 players -> 4 total
+    "CONCLUSION_UG": 6,   # 3 votes on 2 players
+    "WINDMILL_VOTE": 2,
+    "WINDMILL_VOTE_UG": 4,
 }
 
 BLOCK_CARDS_SIMPLE: Dict[str, int] = {
     "BLOCK_1": 1,
+    "BLOCK_1_UG": 2,
     "SHIELD": 1,
+    "SHIELD_UG": 1,
     "BLOCK_2": 2,
+    "BLOCK_2z_UG": 2,
     "SURVIVE": 2,
+    "SURVIVE_UG": 3,
+    "BRING_IT_ON": 2,
+    "BRING_IT_ON_UG": 3,
+    "FLIP": 1,
+    "FLIP_UG": 1,
+    "DE_SPRAY": 1,
+    "DE_SPRAY_UG": 3,
+    "ROLL_AND_DODGE": 2,
+    "ROLL_AND_DODGE_UG": 3,
+    "PROTECTION": 3,
+    "PROTECTION_UG": 4,
+    "ARMORIZE": 2,
+    "ARMORIZE_UG": 3,
+    "SPEED": 2,
+    "SPEED_UG": 4,
+    "ESCAPE": 1,
+    "ESCAPE_UG": 2,
+    "FLETCHING": 1,   # per non-vote, but we just treat as flat 1 here
+    "FLETCHING_UG": 2,
+    "JUMP": 2,
+    "JUMP_UG": 3,
+    "PIERCING_WALL": 3,
+    "PIERCING_WALL_UG": 4,
+    "SWEEP": 3,
+    "SWEEP_UG": 4,
+    "CONTINUE": 1,
+    "CONTINUE_UG": 2,
+    "FORWARD": 1,
+    "FORWARD_UG": 1,
+    "HAND_STOP": 1,
+    "HAND_STOP_UG": 1,
+    "WALRUS": 2,
+    "WALRUS_UG": 2,
 }
 
 
@@ -1769,6 +1878,10 @@ async def startgame(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Ga
         p.turn_done = False
         p.draft_done = False
         p.camp_done = False
+        p.next_round_extra_cards = 0
+        p.next_round_energy_bonus = 0
+        p.cards_played_this_round.clear()
+        p.cards_discarded_this_round.clear()
 
     await update.effective_message.reply_text(
         "🃏 Game started! All players have the starter 10-card deck.\n"
@@ -1853,6 +1966,8 @@ async def nextround(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Ga
         p.blocks = 0
         p.votes_cast_this_round = 0
         p.votes_received_this_round = 0
+        p.cards_played_this_round.clear()
+        p.cards_discarded_this_round.clear()
 
         # Reset phase flags
         p.turn_done = False
@@ -1867,8 +1982,7 @@ async def nextround(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Ga
         # Draw 5 + extra NEW cards (no cap including retained)
         draw_count = 5 + p.next_round_extra_cards
         p.next_round_extra_cards = 0
-        for _ in range(draw_count):
-            draw_one(p)
+        draw_cards(p, draw_count)
 
         # DM their hand
         try:
@@ -1915,20 +2029,28 @@ async def resolve(update: Update, context: ContextTypes.DEFAULT_TYPE, game: Game
         src = act.source_id
         tgt = act.target_id
 
+        # Simple votes
         if cid in VOTE_CARDS_SIMPLE and tgt is not None:
             count = VOTE_CARDS_SIMPLE[cid]
             votes_on[tgt] = votes_on.get(tgt, 0) + count
             game.players[src].votes_cast_this_round += count
             game.players[tgt].votes_received_this_round += count
 
+        # Simple blocks
         if cid in BLOCK_CARDS_SIMPLE:
+            # most block cards are self-targeted; for simplicity apply to source
             blocks_on[src] = blocks_on.get(src, 0) + BLOCK_CARDS_SIMPLE[cid]
 
+        # Special starter helpers
         if cid == "ASSIST_ALLY" and tgt is not None:
             votes_on[tgt] = votes_on.get(tgt, 0) + 1
+        if cid == "ASSIST_ALLY_UG" and tgt is not None:
+            votes_on[tgt] = votes_on.get(tgt, 0) + 2
 
         if cid == "BLOCK_ALLY" and tgt is not None:
             blocks_on[tgt] = blocks_on.get(tgt, 0) + 1
+        if cid == "BLOCK_ALLY_UG" and tgt is not None:
+            blocks_on[tgt] = blocks_on.get(tgt, 0) + 2
 
     # Apply blocks: each block cancels 1 vote
     final_votes: Dict[int, int] = {}
@@ -2291,23 +2413,31 @@ async def upgrade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Card play UI (DM)
 # =========================
 
+def is_card_playable(p: PlayerState, cid: str) -> bool:
+    """Check if card can be played right now given energy and cost."""
+    cost = card_cost(cid)
+    if cost is None:
+        # Curse/unplayable
+        return False
+    if cost == "X":
+        return p.energy > 0
+    try:
+        c_int = int(cost)
+    except Exception:
+        c_int = 1
+    return p.energy >= c_int
+
+
 async def send_hand_menu(context: ContextTypes.DEFAULT_TYPE, game: GameState, p: PlayerState):
     """Send the 'play cards' menu for a player with Play + Info buttons."""
     buttons = []
 
     for idx, cid in enumerate(p.hand):
         cost = card_cost(cid)
-        playable = False
-        if cost == "X":
-            playable = p.energy > 0
-        else:
-            try:
-                c_int = int(cost)
-                playable = p.energy >= c_int
-            except Exception:
-                playable = False
+        cost_str = "X" if cost == "X" else ("-" if cost is None else str(cost))
+        playable = is_card_playable(p, cid)
 
-        label = f"{idx+1}. {card_name(cid)} (cost {cost})"
+        label = f"{idx+1}. {card_name(cid)} (cost {cost_str})"
         row = []
         if playable:
             row.append(
@@ -2345,17 +2475,10 @@ async def refresh_hand_message(query, context: ContextTypes.DEFAULT_TYPE, game: 
     buttons = []
     for idx, cid in enumerate(p.hand):
         cost = card_cost(cid)
-        playable = False
-        if cost == "X":
-            playable = p.energy > 0
-        else:
-            try:
-                c_int = int(cost)
-                playable = p.energy >= c_int
-            except Exception:
-                playable = False
+        cost_str = "X" if cost == "X" else ("-" if cost is None else str(cost))
+        playable = is_card_playable(p, cid)
 
-        label = f"{idx+1}. {card_name(cid)} (cost {cost})"
+        label = f"{idx+1}. {card_name(cid)} (cost {cost_str})"
         row = []
         if playable:
             row.append(
@@ -2384,6 +2507,158 @@ async def refresh_hand_message(query, context: ContextTypes.DEFAULT_TYPE, game: 
         text=text,
         reply_markup=InlineKeyboardMarkup(buttons),
     )
+
+
+# =========================
+# Card immediate effects
+# =========================
+
+def add_curse_to_draw_pile(p: PlayerState, count: int = 1):
+    """Add CURSE cards to the player's draw pile (discard, then reshuffle when needed)."""
+    for _ in range(max(0, count)):
+        p.discard.append("CURSE")
+
+
+def apply_immediate_effect(game: GameState, p: PlayerState, cid: str, target: Optional[PlayerState], x_value: int):
+    """
+    Handle the immediate on-play effects that don't wait for /resolve.
+    This is intentionally conservative: we implement the common straightforward parts:
+      - Draw cards
+      - Discard random / specific cards
+      - Next-round extra cards / energy
+      - Simple block gains
+      - Curse insertion
+    Complex text (multi-target splits, conditional scaling, etc.) is mostly left for /resolve or future work.
+    """
+    desc = card_desc(cid).lower()
+
+    # Track that card was played
+    p.cards_played_this_round.append(cid)
+
+    # Simple draw effects (very coarse but effective)
+    if cid in {
+        "QUICK_DRAW", "QUICK_DRAW_UG",
+        "SLIM", "SLIM_UG",
+        "BATTLE_CRY", "BATTLE_CRY_UG",
+        "BALANCE", "BALANCE_UG",
+        "CARD_DRAW_2", "CARD_DRAW_2_UG",
+        "EXPERT", "EXPERT_UG",
+        "GAMBLE", "GAMBLE_UG",
+        "BACKPACK", "BACKPACK_UG",
+        "OVERLOAD", "OVERLOAD_UG",
+        "SCRAPS", "SCRAPS_UG",
+        "BRING_IT_ON", "BRING_IT_ON_UG",
+        "FLIP", "FLIP_UG",
+        "POUND_VOTE", "POUND_VOTE_UG",
+        "SLIM", "SLIM_UG",
+        "TURBO_TIME", "TURBO_TIME_UG",
+        "ESCAPE", "ESCAPE_UG",
+    }:
+        # Heuristic: look for "draw N cards" patterns.
+        # This won't be perfect for every card but covers most.
+        if "draw cards until you have 5" in desc:
+            # EXPERT
+            draw_cards(p, max(0, 5 - len(p.hand)))
+        elif "draw cards until you have 6" in desc:
+            # EXPERT_UG
+            draw_cards(p, max(0, 6 - len(p.hand)))
+        elif "draw 4 cards" in desc:
+            draw_cards(p, 4)
+        elif "draw 3 cards" in desc:
+            draw_cards(p, 3)
+        elif "draw 2 cards" in desc:
+            draw_cards(p, 2)
+        elif "draw 1 card" in desc:
+            draw_cards(p, 1)
+
+    # Balance / Vote Throw / Backpack discard-then-draw style
+    if cid in {"BALANCE", "BALANCE_UG"}:
+        # "Draw N cards. Discard 1 card."
+        if "draw 3 cards" in desc:
+            draw_cards(p, 3)
+        elif "draw 4 cards" in desc:
+            draw_cards(p, 4)
+        if p.hand:
+            discard_random(p, 1)
+
+    if cid in {"VOTE_THROW", "VOTE_THROW_UG"}:
+        # Draw 1, discard 1
+        draw_cards(p, 1)
+        if p.hand:
+            discard_random(p, 1)
+
+    if cid in {"BACKPACK", "BACKPACK_UG"}:
+        # Draw 1, discard 1 (or 2/2)
+        if "draw 2 cards" in desc:
+            draw_cards(p, 2)
+            discard_random(p, min(2, len(p.hand)))
+        else:
+            draw_cards(p, 1)
+            if p.hand:
+                discard_random(p, 1)
+
+    if cid in {"GAMBLE", "GAMBLE_UG"}:
+        # Discard your hand, then draw that many cards.
+        old_count = len(p.hand)
+        while p.hand:
+            card = p.hand.pop()
+            p.discard.append(card)
+            p.cards_discarded_this_round.append(card)
+        draw_cards(p, old_count)
+
+    # Escape, Bring it On, Flip – add draw + simple blocks logic handled here
+    if cid in {"ESCAPE", "ESCAPE_UG"}:
+        draw_cards(p, 1)
+    if cid in {"BRING_IT_ON", "BRING_IT_ON_UG"}:
+        draw_cards(p, 1)
+    if cid in {"FLIP", "FLIP_UG"}:
+        # Draw extra cards compared to base
+        if "draw 3 cards" in desc:
+            draw_cards(p, 3)
+        else:
+            draw_cards(p, 2)
+
+    # Next-round extra card(s)
+    if cid in {"GROUP_TALK", "GROUP_TALK_UG"}:
+        if "gain +2 card next round" in desc:
+            p.next_round_extra_cards += 2
+        else:
+            p.next_round_extra_cards += 1
+
+    # Next-round energy
+    if cid in {"ENERGY_BATTERY", "ENERGY_BATTERY_UG"}:
+        p.next_round_energy_bonus += 1
+
+    # Same-round energy gain
+    if cid in {"ENERGY_SURGE", "ENERGY_SURGE_UG"}:
+        p.energy += 2
+    if cid in {"TURBO_TIME", "TURBO_TIME_UG"}:
+        # Turbo Time gives immediate energy and adds curses
+        if "gain 3e" in desc:
+            p.energy += 3
+        else:
+            p.energy += 2
+
+    # Curses
+    if "add a curse card to your draw pile" in desc:
+        add_curse_to_draw_pile(p, 1)
+
+    # Simple block effects not fully handled by resolve map
+    if cid in {"SURVIVE", "SURVIVE_UG"}:
+        # additional block handled via BLOCK_CARDS_SIMPLE in resolve
+        # here we only implement the discard 1 card clause
+        if p.hand:
+            discard_random(p, 1)
+
+    # Trash – very simplified: discard 1 random card and gain 1 energy
+    if cid in {"TRASH", "TRASH_UG"}:
+        if p.hand:
+            discard_random(p, 1)
+            p.energy += 1
+
+    # We intentionally leave many of the more complex conditional effects
+    # (like "for each curse", "if discarded while scrying", etc.)
+    # as future work to keep this engine manageable.
 
 
 # =========================
@@ -2425,6 +2700,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cid = p.hand[card_index]
         cost = card_cost(cid)
 
+        # Unplayable cards (curses, etc.)
+        if cost is None:
+            await query.edit_message_text("That card cannot be played.")
+            return
+
         # Determine energy cost
         if cost == "X":
             if p.energy <= 0:
@@ -2452,6 +2732,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             target_id = player_id if target_mode == "self" else None
             act = Action(source_id=player_id, card_id=cid, target_id=target_id, x_value=x_value)
             game.actions.append(act)
+
+            # Apply immediate (non-vote) effects
+            target_player = game.players.get(target_id) if target_id is not None else None
+            apply_immediate_effect(game, p, cid, target_player, x_value)
+
+            # After playing, card goes to discard
             p.discard.append(cid)
             del p.hand[card_index]
 
@@ -2464,6 +2750,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # no valid target; just discard the card
             act = Action(source_id=player_id, card_id=cid, target_id=None, x_value=x_value)
             game.actions.append(act)
+            apply_immediate_effect(game, p, cid, None, x_value)
             p.discard.append(cid)
             del p.hand[card_index]
             await refresh_hand_message(query, context, game, p)
@@ -2508,12 +2795,99 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         cid = p.hand[card_index]
+
+        # Special handling for ASSIST_ALLY (delegated vote)
+        if cid in {"ASSIST_ALLY", "ASSIST_ALLY_UG"}:
+            delegate = t  # the player who will choose where the vote goes
+
+            # Move the card from hand to discard for the giver
+            p.discard.append(cid)
+            del p.hand[card_index]
+
+            # Build buttons for the delegate to secretly choose a target
+            alive_players = [pl for pl in game.players.values() if pl.alive]
+            buttons = []
+            for pl in alive_players:
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=pl.username,
+                        callback_data=(
+                            f"assist_target|{chat_id}|{player_id}|{delegate.user_id}|{pl.user_id}|{x_value}|{cid}"
+                        ),
+                    )
+                ])
+
+            # DM the delegate
+            try:
+                await context.bot.send_message(
+                    chat_id=delegate.user_id,
+                    text=(
+                        f"🤝 {p.username} has given you control of their vote.\n\n"
+                        "Choose who this delegated vote should go to:"
+                    ),
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                )
+            except Exception as e:
+                logger.error(f"Failed to send assist vote DM to {delegate.user_id}: {e}")
+                # If DM fails, the assist is effectively lost
+
+            # Refresh the giver's hand view
+            await refresh_hand_message(query, context, game, p)
+            return
+
+        # Default behavior for all other targeted cards
+        target_player = t
         act = Action(source_id=player_id, card_id=cid, target_id=target_id, x_value=x_value)
         game.actions.append(act)
+
+        # Apply immediate side effects
+        apply_immediate_effect(game, p, cid, target_player, x_value)
+
         p.discard.append(cid)
         del p.hand[card_index]
 
         await refresh_hand_message(query, context, game, p)
+
+    elif kind == "assist_target":
+        # assist_target|chat_id|giver_id|delegate_id|target_id|x_value|cid
+        if len(data) != 7:
+            return
+        chat_id = int(data[1])
+        giver_id = int(data[2])
+        delegate_id = int(data[3])
+        target_id = int(data[4])
+        x_value = int(data[5])
+        cid = data[6]
+
+        game = get_game(chat_id)
+        if not game:
+            await query.edit_message_text("Game no longer exists.")
+            return
+
+        giver = game.players.get(giver_id)
+        delegate = game.players.get(delegate_id)
+        target = game.players.get(target_id)
+
+        if not giver or not delegate or not target:
+            await query.edit_message_text("One of the players is no longer in the game.")
+            return
+        if not giver.alive or not delegate.alive or not target.alive:
+            await query.edit_message_text("One of the players is no longer alive in the game.")
+            return
+
+        # Record the delegated vote as an ASSIST_ALLY action.
+        # /resolve already knows how to turn this into +1 or +2 vote(s) on target.
+        act = Action(
+            source_id=giver_id,
+            card_id=cid,
+            target_id=target_id,
+            x_value=x_value,
+        )
+        game.actions.append(act)
+
+        await query.edit_message_text(
+            f"✅ You directed {giver.username}'s vote to {target.username}."
+        )
 
     elif kind == "done":
         if len(data) != 3:
@@ -2556,21 +2930,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cid = p.hand[idx]
         name = card_name(cid)
         cost = card_cost(cid)
+        cost_str = "X" if cost == "X" else ("-" if cost is None else str(cost))
         desc = card_desc(cid)
 
-        playable = False
-        if cost == "X":
-            playable = p.energy > 0
-        else:
-            try:
-                c_int = int(cost)
-                playable = p.energy >= c_int
-            except Exception:
-                playable = False
+        playable = is_card_playable(p, cid)
 
         text = (
             f"📜 *{name}*\n"
-            f"Cost: `{cost}`\n\n"
+            f"Cost: `{cost_str}`\n\n"
             f"{desc}\n\n"
             "Tap ▶ to play it (if you have enough energy), or go back to your hand."
         )
@@ -2816,52 +3183,60 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================
-# Webhook configuration
-# =========================
-
-TOKEN = os.environ["BOT_TOKEN"]          # Set in Render environment
-APP_URL = os.environ["APP_URL"]          # e.g. https://last-hand-standing-bot-cui9.onrender.com
-PORT = int(os.environ.get("PORT", 8443)) # Render injects PORT
-WEBHOOK_PATH = "popodoppobbaoxe"         # your custom webhook path
-
-
-# =========================
-# Main
+# Main – webhook-based (Render-friendly)
 # =========================
 
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    token = os.environ.get("BOT_TOKEN")
+    if not token:
+        raise RuntimeError("BOT_TOKEN env var not set")
+
+    application = ApplicationBuilder().token(token).build()
 
     # Group commands
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("newgame", newgame))
-    app.add_handler(CommandHandler("join", join))
-    app.add_handler(CommandHandler("startgame", startgame))
-    app.add_handler(CommandHandler("nextround", nextround))
-    app.add_handler(CommandHandler("resolve", resolve))
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("reward", reward))
-    app.add_handler(CommandHandler("players", players_cmd))
-    app.add_handler(CommandHandler("readycheck", readycheck))
-    app.add_handler(CommandHandler("camp", camp))
-    app.add_handler(CommandHandler("endgame", endgame))
+    application.add_handler(CommandHandler("help", help_cmd))
+    application.add_handler(CommandHandler("newgame", newgame))
+    application.add_handler(CommandHandler("join", join))
+    application.add_handler(CommandHandler("startgame", startgame))
+    application.add_handler(CommandHandler("nextround", nextround))
+    application.add_handler(CommandHandler("resolve", resolve))
+    application.add_handler(CommandHandler("status", status))
+    application.add_handler(CommandHandler("reward", reward))
+    application.add_handler(CommandHandler("players", players_cmd))
+    application.add_handler(CommandHandler("readycheck", readycheck))
+    application.add_handler(CommandHandler("camp", camp))
+    application.add_handler(CommandHandler("endgame", endgame))
 
     # Private commands
-    app.add_handler(CommandHandler("start", start_private))
-    app.add_handler(CommandHandler("deck", deck_cmd))
-    app.add_handler(CommandHandler("remove", remove_cmd))
-    app.add_handler(CommandHandler("upgrade", upgrade_cmd))
+    application.add_handler(CommandHandler("start", start_private))
+    application.add_handler(CommandHandler("deck", deck_cmd))
+    application.add_handler(CommandHandler("remove", remove_cmd))
+    application.add_handler(CommandHandler("upgrade", upgrade_cmd))
 
     # Callback
-    app.add_handler(CallbackQueryHandler(handle_callback))
+    application.add_handler(CallbackQueryHandler(handle_callback))
 
-    logger.info("Bot starting in webhook mode...")
+    # --- Webhook config for Render ---
+    port = int(os.environ.get("PORT", "10000"))
 
-    app.run_webhook(
+    # Secret path for webhook (must match Telegram setWebhook and Render URL)
+    webhook_path = os.environ.get("WEBHOOK_PATH", "popodoppobbaoxe")
+
+    # Public base URL of your Render service
+    base_url = os.environ.get(
+        "PUBLIC_URL",
+        "https://last-hand-standing-bot-cui9.onrender.com",
+    )
+    webhook_url = f"{base_url.rstrip('/')}/{webhook_path}"
+
+    logger.info(f"Starting webhook on 0.0.0.0:{port} at path /{webhook_path}")
+    logger.info(f"Webhook URL registered with Telegram: {webhook_url}")
+
+    application.run_webhook(
         listen="0.0.0.0",
-        port=PORT,
-        url_path=WEBHOOK_PATH,
-        webhook_url=f"{APP_URL}/{WEBHOOK_PATH}",
+        port=port,
+        url_path=webhook_path,
+        webhook_url=webhook_url,
     )
 
 
